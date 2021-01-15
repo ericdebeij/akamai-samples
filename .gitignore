@@ -127,3 +127,12 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# MAC nonsense
+Icon?
+
+# VSCode
+.devcontainer
+.vscode
+
+# Random stuff
