@@ -19,12 +19,16 @@
 #
 # WARNING: Please verify the code before you run it, use at your own risk
 """
-Akamai-diag - diagnostic utilities
+akamai-get - get Akamai stuff
 
-urldebug    - provide an akamaized url and receive information like statuscode, cpcode, origin
-errorcode   - translate an errorstring
+urldebug   - provide an akamaized url and receive information like statuscode, cpcode, origin
+reference  - translate an Akamai reference or errorstring
+origins    - abstract the origins used from a property configurations
 
-Full information can be reviewed using -json export.json
+Use --help to get syntax info
+Full information can be reviewed using --json export.json
+
+Eric Debeij
 """
 
 import requests
@@ -33,6 +37,7 @@ import json
 import os
 import re
 import datetime
+import sys
 import csv
 import traceback 
 import argparse
@@ -123,7 +128,11 @@ retry_strategy = Retry(
     method_whitelist = ["HEAD", "GET", "POST", "PUT", "DELETE", "OPTIONS", "TRACE"],
     backoff_factor=1
 )
+
 class AkamaiBase:
+    '''
+    Support class to somewhat easily use the Akamai API's
+    '''
     def __init__(self, config, section, account=None):
         self._config=config
         self._section=section
@@ -161,7 +170,7 @@ class AkamaiDiag(AkamaiBase):
         )
         return response.json()
 
-    def errorcode(self, errorCode):
+    def reference(self, errorCode):
         errorCode = html.unescape(errorCode)
         if '#' in errorCode:
             errorCode = errorCode.split('#')[1]
@@ -212,9 +221,11 @@ class AkamaiDiag(AkamaiBase):
             
     def origins(self, hostname):
         rules = self.propertyrules(hostname)
-        ruleinfo = RuleInfo(rules)
-        return ruleinfo.behaviors['origin']
-            
+        if rules:
+            ruleinfo = RuleInfo(rules)
+            return ruleinfo.behaviors['origin']
+        return None
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__,
             formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -230,8 +241,8 @@ if __name__ == "__main__":
     parser_urldebug = subparsers.add_parser("urldebug")
     parser_urldebug.add_argument('URL', help='url to test')
 
-    parser_urldebug = subparsers.add_parser("errorcode")
-    parser_urldebug.add_argument('errorcode', help='errorcode / reference')
+    parser_urldebug = subparsers.add_parser("reference")
+    parser_urldebug.add_argument('reference', help='Akamai error reference')
 
     parser_origins = subparsers.add_parser("origins")
     parser_origins.add_argument("hostname", help="akamaized hostname")
@@ -257,8 +268,8 @@ if __name__ == "__main__":
         except:
             print(json.dumps(result, indent=2))
 
-    elif args.command == 'errorcode':
-        result = akadiag.errorcode(args.errorcode)
+    elif args.command == 'reference':
+        result = akadiag.reference(args.reference)
         te=result["translatedError"]
         for x in te:
             if te[x] and (isinstance(te[x], int) or isinstance(te[x],str)):
@@ -266,12 +277,15 @@ if __name__ == "__main__":
 
     elif args.command == 'origins':
         result = akadiag.origins(args.hostname)
-        for x in result:
-            o = x['options']
-            if o["originType"] == "CUSTOMER":
-                print('{hostname}'.format(**o))
-            elif o["originType"] == "NET_STORAGE":
-                print('{downloadDomainName}'.format(**o['netStorage']))
+        if result is None:
+            print('Problem, hostname incorrect or issue with accessing the API', file=sys.stderr)
+        else:
+            for x in result:
+                o = x['options']
+                if o["originType"] == "CUSTOMER":
+                    print('{hostname}'.format(**o))
+                elif o["originType"] == "NET_STORAGE":
+                    print('{downloadDomainName}'.format(**o['netStorage']))
 
     else:
         parser.print_help()
